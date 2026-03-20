@@ -96,9 +96,25 @@ const createWorkingPool = async () => {
   throw new Error(`No se pudo conectar a Postgres. Intentos: ${errors.join(' | ')}`);
 };
 
+const wait = (ms) => new Promise((resolve) => setTimeout(resolve, ms));
+
+const connectWithRetry = async (attempts = 12, delayMs = 5000) => {
+  let lastError;
+  for (let i = 1; i <= attempts; i++) {
+    try {
+      return await createWorkingPool();
+    } catch (error) {
+      lastError = error;
+      console.error(`DB intento ${i}/${attempts} falló: ${error?.message || error}`);
+      if (i < attempts) await wait(delayMs);
+    }
+  }
+  throw lastError;
+};
+
 const initDB = async () => {
   try {
-    activePool = await createWorkingPool();
+    activePool = await connectWithRetry();
     await pool.query(`
       CREATE TABLE IF NOT EXISTS users (
         id SERIAL PRIMARY KEY,
