@@ -1,5 +1,13 @@
 const { Pool } = require('pg');
 
+console.log('Variables de conexión:', {
+  host: process.env.PGHOST,
+  user: process.env.PGUSER,
+  database: process.env.PGDATABASE,
+  port: process.env.PGPORT,
+  hasPassword: !!process.env.PGPASSWORD,
+  databaseUrl: process.env.DATABASE_URL ? 'presente' : 'ausente'
+});
 
 const pool = new Pool({
   host: process.env.PGHOST,
