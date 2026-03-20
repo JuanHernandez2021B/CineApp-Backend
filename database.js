@@ -1,13 +1,8 @@
 const { Pool } = require('pg');
 
-console.log('Variables de conexión:', {
-  host: process.env.PGHOST,
-  user: process.env.PGUSER,
-  database: process.env.PGDATABASE,
-  port: process.env.PGPORT,
-  hasPassword: !!process.env.PGPASSWORD,
-  databaseUrl: process.env.DATABASE_URL ? 'presente' : 'ausente'
-});
+const isInternal = process.env.PGHOST === 'postgres.railway.internal';
+
+console.log('Usando conexión:', isInternal ? 'interna' : 'externa');
 
 const pool = new Pool({
   host: process.env.PGHOST,
@@ -15,7 +10,7 @@ const pool = new Pool({
   password: process.env.PGPASSWORD,
   database: process.env.PGDATABASE,
   port: process.env.PGPORT,
-  ssl: { rejectUnauthorized: false }
+  ssl: isInternal ? false : { rejectUnauthorized: false }
 });
 
 const initDB = async () => {
