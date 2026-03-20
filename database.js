@@ -48,7 +48,7 @@ const getPoolConfigs = () => {
 
   if (databaseUrl) {
     const noSslUrl = withSslMode(databaseUrl, 'disable');
-    const sslUrl = withSslMode(databaseUrl, 'require');
+    const sslUrl = withSslMode(databaseUrl, null);
     configs.push({ ...baseConfig, connectionString: noSslUrl, ssl: false });
     configs.push({
       ...baseConfig,
@@ -59,7 +59,7 @@ const getPoolConfigs = () => {
 
   if (databasePublicUrl) {
     const pubNoSslUrl = withSslMode(databasePublicUrl, 'disable');
-    const pubSslUrl = withSslMode(databasePublicUrl, 'require');
+    const pubSslUrl = withSslMode(databasePublicUrl, null);
     configs.push({ ...baseConfig, connectionString: pubNoSslUrl, ssl: false });
     configs.push({
       ...baseConfig,
