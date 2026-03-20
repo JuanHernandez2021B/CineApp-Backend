@@ -2,13 +2,16 @@ const { Pool } = require('pg');
 require('dotenv').config();
 
 const pool = new Pool({
-  connectionString: process.env.DATABASE_URL,
+  host: process.env.PGHOST,
+  user: process.env.PGUSER,
+  password: process.env.PGPASSWORD,
+  database: process.env.PGDATABASE,
+  port: process.env.PGPORT,
   ssl: { rejectUnauthorized: false }
 });
 
 const initDB = async () => {
   try {
-    // Tabla de usuarios
     await pool.query(`
       CREATE TABLE IF NOT EXISTS users (
         id SERIAL PRIMARY KEY,
@@ -20,7 +23,6 @@ const initDB = async () => {
       )
     `);
 
-    // Tabla de películas
     await pool.query(`
       CREATE TABLE IF NOT EXISTS movies (
         id SERIAL PRIMARY KEY,
@@ -40,7 +42,6 @@ const initDB = async () => {
       )
     `);
 
-    // Tabla de comentarios y ratings
     await pool.query(`
       CREATE TABLE IF NOT EXISTS reviews (
         id SERIAL PRIMARY KEY,
@@ -56,7 +57,7 @@ const initDB = async () => {
 
     console.log('✅ Base de datos inicializada correctamente');
   } catch (error) {
-    console.error('❌ Error inicializando base de datos:', error);
+    console.error('❌ Error inicializando base de datos:', error.message);
   }
 };
 
