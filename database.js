@@ -1,20 +1,14 @@
 const { Pool } = require('pg');
 
-const isInternal = process.env.PGHOST === 'postgres.railway.internal';
-
-console.log('Usando conexión:', isInternal ? 'interna' : 'externa');
-
 const pool = new Pool({
   host: process.env.PGHOST,
   user: process.env.PGUSER,
   password: process.env.PGPASSWORD,
   database: process.env.PGDATABASE,
   port: parseInt(process.env.PGPORT),
-  ssl: { rejectUnauthorized: false },
-  connectionTimeoutMillis: 10000,
-  idleTimeoutMillis: 30000,
-  max: 10
+  ssl: false
 });
+
 const initDB = async () => {
   try {
     await pool.query(`
@@ -66,4 +60,4 @@ const initDB = async () => {
   }
 };
 
-module.exports = { pool, initDB };
+module.exp
