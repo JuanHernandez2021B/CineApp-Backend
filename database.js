@@ -21,7 +21,28 @@ const withSslMode = (rawUrl, mode) => {
   }
 };
 
+const hasPgVars = !!(
+  pgHost &&
+  process.env.PGUSER &&
+  process.env.PGPASSWORD &&
+  process.env.PGDATABASE &&
+  process.env.PGPORT
+);
+
 const getPoolConfigs = () => {
+  if (hasPgVars) {
+    const isInternal = pgHost.includes('railway.internal');
+    return [{
+      ...baseConfig,
+      host: pgHost,
+      user: process.env.PGUSER,
+      password: process.env.PGPASSWORD,
+      database: process.env.PGDATABASE,
+      port: parseInt(process.env.PGPORT, 10),
+      ssl: isInternal ? false : { rejectUnauthorized: false }
+    }];
+  }
+
   if (databaseUrl) {
     const noSslUrl = withSslMode(databaseUrl, 'disable');
     const sslUrl = withSslMode(databaseUrl, 'require');
@@ -34,20 +55,7 @@ const getPoolConfigs = () => {
     return [noSsl, ssl];
   }
 
-  if (!pgHost || !process.env.PGUSER || !process.env.PGPASSWORD || !process.env.PGDATABASE || !process.env.PGPORT) {
-    throw new Error('Faltan variables de DB. Configura DATABASE_URL o PGHOST/PGUSER/PGPASSWORD/PGDATABASE/PGPORT.');
-  }
-
-  const isInternal = pgHost.includes('railway.internal');
-  return [{
-    ...baseConfig,
-    host: pgHost,
-    user: process.env.PGUSER,
-    password: process.env.PGPASSWORD,
-    database: process.env.PGDATABASE,
-    port: parseInt(process.env.PGPORT, 10),
-    ssl: isInternal ? false : { rejectUnauthorized: false }
-  }];
+  throw new Error('Faltan variables de DB. Configura PGHOST/PGUSER/PGPASSWORD/PGDATABASE/PGPORT o DATABASE_URL.');
 };
 
 let activePool = null;
