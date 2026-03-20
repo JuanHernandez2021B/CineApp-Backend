@@ -60,4 +60,4 @@ const initDB = async () => {
   }
 };
 
-module.exp
+module.exports = { pool, initDB };
