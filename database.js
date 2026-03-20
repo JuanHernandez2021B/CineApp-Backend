@@ -9,10 +9,12 @@ const pool = new Pool({
   user: process.env.PGUSER,
   password: process.env.PGPASSWORD,
   database: process.env.PGDATABASE,
-  port: process.env.PGPORT,
-  ssl: isInternal ? false : { rejectUnauthorized: false }
+  port: parseInt(process.env.PGPORT),
+  ssl: { rejectUnauthorized: false },
+  connectionTimeoutMillis: 10000,
+  idleTimeoutMillis: 30000,
+  max: 10
 });
-
 const initDB = async () => {
   try {
     await pool.query(`
