@@ -2,7 +2,7 @@ const express = require('express');
 const axios = require('axios');
 const { pool } = require('../database');
 const { verifyToken } = require('./auth');
-require('dotenv').config();
+
 
 const router = express.Router();
 
