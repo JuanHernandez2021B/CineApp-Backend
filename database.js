@@ -19,7 +19,25 @@ const poolConfig = {
 if (hasDatabaseUrl) {
   poolConfig.connectionString = process.env.DATABASE_URL;
 
-  poolConfig.ssl = { rejectUnauthorized: false };
+  // Inferir requerimiento de SSL desde sslmode (Railway normalmente incluye ?sslmode=require).
+  // Si sslmode=disable, no forzamos TLS.
+  try {
+    const u = new URL(process.env.DATABASE_URL);
+    const sslmode = u.searchParams.get('sslmode');
+    const host = u.hostname;
+    const port = u.port || '(default)';
+    console.log('DATABASE_URL host/port:', host, port, 'sslmode:', sslmode || '(none)');
+
+    if (sslmode && sslmode.toLowerCase() === 'disable') {
+      poolConfig.ssl = false;
+    } else {
+      // En Railway (proxy) los certificados pueden ser self-signed; desactivamos validación.
+      poolConfig.ssl = { rejectUnauthorized: false };
+    }
+  } catch {
+    // Si no se puede parsear, asumimos SSL requerido.
+    poolConfig.ssl = { rejectUnauthorized: false };
+  }
 } else {
   poolConfig.host = process.env.PGHOST;
   poolConfig.user = process.env.PGUSER;
@@ -79,7 +97,9 @@ const initDB = async () => {
 
     console.log('✅ Base de datos inicializada correctamente');
   } catch (error) {
-    console.error('❌ Error inicializando base de datos:', error.message);
+    console.error('❌ Error inicializando base de datos:', error?.message);
+    // Imprimir el error completo para ver causa real (TLS handshake, etc.)
+    console.error(error);
     throw error; // que el servidor no arranque con un Pool inválido
   }
 };
