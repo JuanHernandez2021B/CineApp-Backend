@@ -19,6 +19,14 @@ const baseConfig = {
   max: 3
 };
 
+const hasPgVars = !!(
+  process.env.PGHOST &&
+  process.env.PGUSER &&
+  process.env.PGPASSWORD &&
+  process.env.PGDATABASE &&
+  process.env.PGPORT
+);
+
 const internalConfig = {
   ...baseConfig,
   host: process.env.PGHOST,
@@ -44,6 +52,10 @@ const dbUrlSslConfig = {
 };
 
 const candidateConfigs = [];
+if (hasPgVars) {
+  candidateConfigs.push(['pg-vars-no-ssl', internalConfig]);
+}
+
 if (usingInternalRailway) {
   candidateConfigs.push(['internal-no-ssl', internalConfig]);
   if (hasDatabaseUrl) {
