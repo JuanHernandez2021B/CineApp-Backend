@@ -10,12 +10,25 @@ const baseConfig = {
   max: 3
 };
 
+const withSslMode = (rawUrl, mode) => {
+  try {
+    const u = new URL(rawUrl);
+    if (mode) u.searchParams.set('sslmode', mode);
+    else u.searchParams.delete('sslmode');
+    return u.toString();
+  } catch {
+    return rawUrl;
+  }
+};
+
 const getPoolConfigs = () => {
   if (databaseUrl) {
-    const noSsl = { ...baseConfig, connectionString: databaseUrl, ssl: false };
+    const noSslUrl = withSslMode(databaseUrl, 'disable');
+    const sslUrl = withSslMode(databaseUrl, 'require');
+    const noSsl = { ...baseConfig, connectionString: noSslUrl, ssl: false };
     const ssl = {
       ...baseConfig,
-      connectionString: databaseUrl,
+      connectionString: sslUrl,
       ssl: { rejectUnauthorized: false }
     };
     return [noSsl, ssl];
@@ -51,6 +64,7 @@ const connectWithRetry = async (attempts = 10, delayMs = 4000) => {
   let lastError;
 
   for (let i = 1; i <= attempts; i++) {
+    const attemptErrors = [];
     for (const config of configs) {
       try {
         const testPool = new Pool(config);
@@ -59,11 +73,12 @@ const connectWithRetry = async (attempts = 10, delayMs = 4000) => {
         return testPool;
       } catch (error) {
         lastError = error;
+        attemptErrors.push(error?.message || String(error));
       }
     }
-    console.error(`DB intento ${i}/${attempts} falló: ${lastError?.message || lastError}`);
+    console.error(`DB intento ${i}/${attempts} falló: ${attemptErrors.join(' | ')}`);
     if (i < attempts) await wait(delayMs);
-    }
+  }
 
   throw lastError;
 };
