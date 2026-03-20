@@ -1,17 +1,8 @@
 const { Pool } = require('pg');
 require('dotenv').config();
 
-const privateUrl = process.env.DATABASE_PRIVATE_URL || process.env.POSTGRES_PRIVATE_URL || null;
-const publicUrl = process.env.DATABASE_URL || process.env.POSTGRES_URL || null;
-const hasDatabaseUrl = !!(privateUrl || publicUrl);
-const usingInternalRailway =
-  process.env.PGHOST === 'postgres.railway.internal' ||
-  (privateUrl && privateUrl.includes('railway.internal')) ||
-  (publicUrl && publicUrl.includes('railway.internal'));
-
-console.log('Usando conexión:', usingInternalRailway ? 'interna' : 'externa');
-console.log('DATABASE_URL presente:', hasDatabaseUrl ? 'sí' : 'no');
-console.log('PGHOST:', process.env.PGHOST ? process.env.PGHOST : '(no definido)');
+const databaseUrl = process.env.DATABASE_URL || process.env.POSTGRES_URL;
+const pgHost = process.env.PGHOST;
 
 const baseConfig = {
   connectionTimeoutMillis: 10000,
@@ -19,60 +10,41 @@ const baseConfig = {
   max: 3
 };
 
-const hasPgVars = !!(
-  process.env.PGHOST &&
-  process.env.PGUSER &&
-  process.env.PGPASSWORD &&
-  process.env.PGDATABASE &&
-  process.env.PGPORT
-);
+const getPoolConfig = () => {
+  if (databaseUrl) {
+    let isInternal = false;
+    let sslmode = null;
+    try {
+      const url = new URL(databaseUrl);
+      isInternal = url.hostname.includes('railway.internal');
+      sslmode = (url.searchParams.get('sslmode') || '').toLowerCase();
+    } catch {}
 
-const internalConfig = {
-  ...baseConfig,
-  host: process.env.PGHOST,
-  user: process.env.PGUSER,
-  password: process.env.PGPASSWORD,
-  database: process.env.PGDATABASE,
-  port: process.env.PGPORT ? parseInt(process.env.PGPORT) : undefined,
-  ssl: false
-};
-
-const selectedUrl = privateUrl || publicUrl;
-
-const dbUrlNoSslConfig = {
-  ...baseConfig,
-  connectionString: selectedUrl,
-  ssl: false
-};
-
-const dbUrlSslConfig = {
-  ...baseConfig,
-  connectionString: selectedUrl,
-  ssl: { rejectUnauthorized: false }
-};
-
-const candidateConfigs = [];
-if (hasPgVars) {
-  candidateConfigs.push(['pg-vars-no-ssl', internalConfig]);
-}
-
-if (usingInternalRailway) {
-  candidateConfigs.push(['internal-no-ssl', internalConfig]);
-  if (hasDatabaseUrl) {
-    candidateConfigs.push(['db-url-no-ssl', dbUrlNoSslConfig]);
-    candidateConfigs.push(['db-url-ssl', dbUrlSslConfig]);
+    if (sslmode === 'disable' || isInternal) {
+      return { ...baseConfig, connectionString: databaseUrl, ssl: false };
+    }
+    return {
+      ...baseConfig,
+      connectionString: databaseUrl,
+      ssl: { rejectUnauthorized: false }
+    };
   }
-} else {
-  if (hasDatabaseUrl) {
-    candidateConfigs.push(['db-url-ssl', dbUrlSslConfig]);
-    candidateConfigs.push(['db-url-no-ssl', dbUrlNoSslConfig]);
-  }
-  candidateConfigs.push(['pg-vars', internalConfig]);
-}
 
-if (!hasDatabaseUrl && (!process.env.PGHOST || !process.env.PGUSER || !process.env.PGPASSWORD || !process.env.PGDATABASE)) {
-  throw new Error('Faltan variables de DB en Railway (usa DATABASE_PRIVATE_URL o PGHOST/PGUSER/PGPASSWORD/PGDATABASE/PGPORT).');
-}
+  if (!pgHost || !process.env.PGUSER || !process.env.PGPASSWORD || !process.env.PGDATABASE || !process.env.PGPORT) {
+    throw new Error('Faltan variables de DB. Configura DATABASE_URL o PGHOST/PGUSER/PGPASSWORD/PGDATABASE/PGPORT.');
+  }
+
+  const isInternal = pgHost.includes('railway.internal');
+  return {
+    ...baseConfig,
+    host: pgHost,
+    user: process.env.PGUSER,
+    password: process.env.PGPASSWORD,
+    database: process.env.PGDATABASE,
+    port: parseInt(process.env.PGPORT, 10),
+    ssl: isInternal ? false : { rejectUnauthorized: false }
+  };
+};
 
 let activePool = null;
 const pool = {
@@ -81,34 +53,25 @@ const pool = {
   end: (...args) => activePool.end(...args)
 };
 
-const createWorkingPool = async () => {
-  const errors = [];
-  for (const [name, cfg] of candidateConfigs) {
-    try {
-      const testPool = new Pool(cfg);
-      await testPool.query('SELECT 1');
-      console.log('Conexión DB activa:', name);
-      return testPool;
-    } catch (error) {
-      errors.push(`${name}: ${error?.message || error}`);
-    }
-  }
-  throw new Error(`No se pudo conectar a Postgres. Intentos: ${errors.join(' | ')}`);
-};
-
 const wait = (ms) => new Promise((resolve) => setTimeout(resolve, ms));
 
-const connectWithRetry = async (attempts = 12, delayMs = 5000) => {
+const connectWithRetry = async (attempts = 10, delayMs = 4000) => {
+  const config = getPoolConfig();
   let lastError;
+
   for (let i = 1; i <= attempts; i++) {
     try {
-      return await createWorkingPool();
+      const testPool = new Pool(config);
+      await testPool.query('SELECT 1');
+      console.log('Conexión DB activa');
+      return testPool;
     } catch (error) {
       lastError = error;
       console.error(`DB intento ${i}/${attempts} falló: ${error?.message || error}`);
       if (i < attempts) await wait(delayMs);
     }
   }
+
   throw lastError;
 };
 
