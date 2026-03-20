@@ -42,6 +42,15 @@ const getPoolConfigs = () => {
       password: process.env.PGPASSWORD,
       database: process.env.PGDATABASE,
       port: parseInt(process.env.PGPORT, 10),
+      ssl: { rejectUnauthorized: false }
+    });
+    configs.push({
+      ...baseConfig,
+      host: pgHost,
+      user: process.env.PGUSER,
+      password: process.env.PGPASSWORD,
+      database: process.env.PGDATABASE,
+      port: parseInt(process.env.PGPORT, 10),
       ssl: isInternal ? false : { rejectUnauthorized: false }
     });
   }
