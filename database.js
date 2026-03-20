@@ -10,54 +10,74 @@ console.log('Usando conexión:', usingInternalRailway ? 'interna' : 'externa');
 console.log('DATABASE_URL presente:', hasDatabaseUrl ? 'sí' : 'no');
 console.log('PGHOST:', process.env.PGHOST ? process.env.PGHOST : '(no definido)');
 
-const poolConfig = {
+const baseConfig = {
   connectionTimeoutMillis: 10000,
   idleTimeoutMillis: 30000,
-  max: 1
+  max: 3
 };
 
+const internalConfig = {
+  ...baseConfig,
+  host: process.env.PGHOST,
+  user: process.env.PGUSER,
+  password: process.env.PGPASSWORD,
+  database: process.env.PGDATABASE,
+  port: process.env.PGPORT ? parseInt(process.env.PGPORT) : undefined,
+  ssl: false
+};
+
+const dbUrlNoSslConfig = {
+  ...baseConfig,
+  connectionString: process.env.DATABASE_URL,
+  ssl: false
+};
+
+const dbUrlSslConfig = {
+  ...baseConfig,
+  connectionString: process.env.DATABASE_URL,
+  ssl: { rejectUnauthorized: false }
+};
+
+const candidateConfigs = [];
 if (usingInternalRailway) {
-  // Para conexión interna Railway, usar parámetros PG* explícitos y sin SSL.
-  // Esto evita conflictos por query params en DATABASE_URL (ej. sslmode=require).
-  poolConfig.host = process.env.PGHOST;
-  poolConfig.user = process.env.PGUSER;
-  poolConfig.password = process.env.PGPASSWORD;
-  poolConfig.database = process.env.PGDATABASE;
-  poolConfig.port = process.env.PGPORT ? parseInt(process.env.PGPORT) : undefined;
-  poolConfig.ssl = false;
-} else if (hasDatabaseUrl) {
-  poolConfig.connectionString = process.env.DATABASE_URL;
-
-  // Inferir requerimiento de SSL desde sslmode.
-  try {
-    const u = new URL(process.env.DATABASE_URL);
-    const sslmode = u.searchParams.get('sslmode');
-    const host = u.hostname;
-    const port = u.port || '(default)';
-    console.log('DATABASE_URL host/port:', host, port, 'sslmode:', sslmode || '(none)');
-
-    if (sslmode && sslmode.toLowerCase() === 'disable') {
-      poolConfig.ssl = false;
-    } else {
-      poolConfig.ssl = { rejectUnauthorized: false };
-    }
-  } catch {
-    poolConfig.ssl = { rejectUnauthorized: false };
+  candidateConfigs.push(['internal-no-ssl', internalConfig]);
+  if (hasDatabaseUrl) {
+    candidateConfigs.push(['db-url-no-ssl', dbUrlNoSslConfig]);
+    candidateConfigs.push(['db-url-ssl', dbUrlSslConfig]);
   }
 } else {
-  poolConfig.host = process.env.PGHOST;
-  poolConfig.user = process.env.PGUSER;
-  poolConfig.password = process.env.PGPASSWORD;
-  poolConfig.database = process.env.PGDATABASE;
-  poolConfig.port = process.env.PGPORT ? parseInt(process.env.PGPORT) : undefined;
-
-  poolConfig.ssl = usingInternalRailway ? false : { rejectUnauthorized: false };
+  if (hasDatabaseUrl) {
+    candidateConfigs.push(['db-url-ssl', dbUrlSslConfig]);
+    candidateConfigs.push(['db-url-no-ssl', dbUrlNoSslConfig]);
+  }
+  candidateConfigs.push(['pg-vars', internalConfig]);
 }
 
-const pool = new Pool(poolConfig);
+let activePool = null;
+const pool = {
+  query: (...args) => activePool.query(...args),
+  connect: (...args) => activePool.connect(...args),
+  end: (...args) => activePool.end(...args)
+};
+
+const createWorkingPool = async () => {
+  const errors = [];
+  for (const [name, cfg] of candidateConfigs) {
+    try {
+      const testPool = new Pool(cfg);
+      await testPool.query('SELECT 1');
+      console.log('Conexión DB activa:', name);
+      return testPool;
+    } catch (error) {
+      errors.push(`${name}: ${error?.message || error}`);
+    }
+  }
+  throw new Error(`No se pudo conectar a Postgres. Intentos: ${errors.join(' | ')}`);
+};
 
 const initDB = async () => {
   try {
+    activePool = await createWorkingPool();
     await pool.query(`
       CREATE TABLE IF NOT EXISTS users (
         id SERIAL PRIMARY KEY,
@@ -104,9 +124,8 @@ const initDB = async () => {
     console.log('✅ Base de datos inicializada correctamente');
   } catch (error) {
     console.error('❌ Error inicializando base de datos:', error?.message);
-    // Imprimir el error completo para ver causa real (TLS handshake, etc.)
     console.error(error);
-    throw error; // que el servidor no arranque con un Pool inválido
+    throw error;
   }
 };
 
