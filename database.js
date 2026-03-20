@@ -1,10 +1,13 @@
 const { Pool } = require('pg');
 require('dotenv').config();
 
-const hasDatabaseUrl = !!process.env.DATABASE_URL;
+const privateUrl = process.env.DATABASE_PRIVATE_URL || process.env.POSTGRES_PRIVATE_URL || null;
+const publicUrl = process.env.DATABASE_URL || process.env.POSTGRES_URL || null;
+const hasDatabaseUrl = !!(privateUrl || publicUrl);
 const usingInternalRailway =
   process.env.PGHOST === 'postgres.railway.internal' ||
-  (process.env.DATABASE_URL && process.env.DATABASE_URL.includes('railway.internal'));
+  (privateUrl && privateUrl.includes('railway.internal')) ||
+  (publicUrl && publicUrl.includes('railway.internal'));
 
 console.log('Usando conexión:', usingInternalRailway ? 'interna' : 'externa');
 console.log('DATABASE_URL presente:', hasDatabaseUrl ? 'sí' : 'no');
@@ -26,15 +29,17 @@ const internalConfig = {
   ssl: false
 };
 
+const selectedUrl = privateUrl || publicUrl;
+
 const dbUrlNoSslConfig = {
   ...baseConfig,
-  connectionString: process.env.DATABASE_URL,
+  connectionString: selectedUrl,
   ssl: false
 };
 
 const dbUrlSslConfig = {
   ...baseConfig,
-  connectionString: process.env.DATABASE_URL,
+  connectionString: selectedUrl,
   ssl: { rejectUnauthorized: false }
 };
 
@@ -51,6 +56,10 @@ if (usingInternalRailway) {
     candidateConfigs.push(['db-url-no-ssl', dbUrlNoSslConfig]);
   }
   candidateConfigs.push(['pg-vars', internalConfig]);
+}
+
+if (!hasDatabaseUrl && (!process.env.PGHOST || !process.env.PGUSER || !process.env.PGPASSWORD || !process.env.PGDATABASE)) {
+  throw new Error('Faltan variables de DB en Railway (usa DATABASE_PRIVATE_URL o PGHOST/PGUSER/PGPASSWORD/PGDATABASE/PGPORT).');
 }
 
 let activePool = null;
