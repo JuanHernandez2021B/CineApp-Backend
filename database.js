@@ -1,20 +1,36 @@
 const { Pool } = require('pg');
+require('dotenv').config();
 
-const isInternal = process.env.PGHOST === 'postgres.railway.internal';
+const hasDatabaseUrl = !!process.env.DATABASE_URL;
+const usingInternalRailway =
+  process.env.PGHOST === 'postgres.railway.internal' ||
+  (process.env.DATABASE_URL && process.env.DATABASE_URL.includes('railway.internal'));
 
-console.log('Usando conexión:', isInternal ? 'interna' : 'externa');
+console.log('Usando conexión:', usingInternalRailway ? 'interna' : 'externa');
+console.log('DATABASE_URL presente:', hasDatabaseUrl ? 'sí' : 'no');
+console.log('PGHOST:', process.env.PGHOST ? process.env.PGHOST : '(no definido)');
 
-const pool = new Pool({
-  host: process.env.PGHOST,
-  user: process.env.PGUSER,
-  password: process.env.PGPASSWORD,
-  database: process.env.PGDATABASE,
-  port: parseInt(process.env.PGPORT),
-  ssl: { rejectUnauthorized: false },
+const poolConfig = {
   connectionTimeoutMillis: 10000,
   idleTimeoutMillis: 30000,
   max: 1
-});
+};
+
+if (hasDatabaseUrl) {
+  poolConfig.connectionString = process.env.DATABASE_URL;
+
+  poolConfig.ssl = { rejectUnauthorized: false };
+} else {
+  poolConfig.host = process.env.PGHOST;
+  poolConfig.user = process.env.PGUSER;
+  poolConfig.password = process.env.PGPASSWORD;
+  poolConfig.database = process.env.PGDATABASE;
+  poolConfig.port = process.env.PGPORT ? parseInt(process.env.PGPORT) : undefined;
+
+  poolConfig.ssl = { rejectUnauthorized: false };
+}
+
+const pool = new Pool(poolConfig);
 
 const initDB = async () => {
   try {
@@ -64,6 +80,7 @@ const initDB = async () => {
     console.log('✅ Base de datos inicializada correctamente');
   } catch (error) {
     console.error('❌ Error inicializando base de datos:', error.message);
+    throw error; // que el servidor no arranque con un Pool inválido
   }
 };
 
