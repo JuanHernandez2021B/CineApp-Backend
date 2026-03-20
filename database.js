@@ -2,6 +2,7 @@ const { Pool } = require('pg');
 require('dotenv').config();
 
 const databaseUrl = process.env.DATABASE_URL || process.env.POSTGRES_URL;
+const databasePublicUrl = process.env.DATABASE_PUBLIC_URL || null;
 const pgHost = process.env.PGHOST;
 
 const baseConfig = {
@@ -30,9 +31,11 @@ const hasPgVars = !!(
 );
 
 const getPoolConfigs = () => {
+  const configs = [];
+
   if (hasPgVars) {
     const isInternal = pgHost.includes('railway.internal');
-    return [{
+    configs.push({
       ...baseConfig,
       host: pgHost,
       user: process.env.PGUSER,
@@ -40,22 +43,36 @@ const getPoolConfigs = () => {
       database: process.env.PGDATABASE,
       port: parseInt(process.env.PGPORT, 10),
       ssl: isInternal ? false : { rejectUnauthorized: false }
-    }];
+    });
   }
 
   if (databaseUrl) {
     const noSslUrl = withSslMode(databaseUrl, 'disable');
     const sslUrl = withSslMode(databaseUrl, 'require');
-    const noSsl = { ...baseConfig, connectionString: noSslUrl, ssl: false };
-    const ssl = {
+    configs.push({ ...baseConfig, connectionString: noSslUrl, ssl: false });
+    configs.push({
       ...baseConfig,
       connectionString: sslUrl,
       ssl: { rejectUnauthorized: false }
-    };
-    return [noSsl, ssl];
+    });
   }
 
-  throw new Error('Faltan variables de DB. Configura PGHOST/PGUSER/PGPASSWORD/PGDATABASE/PGPORT o DATABASE_URL.');
+  if (databasePublicUrl) {
+    const pubNoSslUrl = withSslMode(databasePublicUrl, 'disable');
+    const pubSslUrl = withSslMode(databasePublicUrl, 'require');
+    configs.push({ ...baseConfig, connectionString: pubNoSslUrl, ssl: false });
+    configs.push({
+      ...baseConfig,
+      connectionString: pubSslUrl,
+      ssl: { rejectUnauthorized: false }
+    });
+  }
+
+  if (configs.length === 0) {
+    throw new Error('Faltan variables de DB. Configura PGHOST/PGUSER/PGPASSWORD/PGDATABASE/PGPORT o DATABASE_URL.');
+  }
+
+  return configs;
 };
 
 let activePool = null;
