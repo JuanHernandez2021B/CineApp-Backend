@@ -28,15 +28,18 @@ if (hasDatabaseUrl) {
     const port = u.port || '(default)';
     console.log('DATABASE_URL host/port:', host, port, 'sslmode:', sslmode || '(none)');
 
-    if (sslmode && sslmode.toLowerCase() === 'disable') {
+    if (usingInternalRailway) {
+      // En red privada de Railway normalmente NO se usa SSL.
+      poolConfig.ssl = false;
+    } else if (sslmode && sslmode.toLowerCase() === 'disable') {
       poolConfig.ssl = false;
     } else {
       // En Railway (proxy) los certificados pueden ser self-signed; desactivamos validación.
       poolConfig.ssl = { rejectUnauthorized: false };
     }
   } catch {
-    // Si no se puede parsear, asumimos SSL requerido.
-    poolConfig.ssl = { rejectUnauthorized: false };
+    // Fallback: interno sin SSL, externo con SSL permisivo.
+    poolConfig.ssl = usingInternalRailway ? false : { rejectUnauthorized: false };
   }
 } else {
   poolConfig.host = process.env.PGHOST;
@@ -45,7 +48,7 @@ if (hasDatabaseUrl) {
   poolConfig.database = process.env.PGDATABASE;
   poolConfig.port = process.env.PGPORT ? parseInt(process.env.PGPORT) : undefined;
 
-  poolConfig.ssl = { rejectUnauthorized: false };
+  poolConfig.ssl = usingInternalRailway ? false : { rejectUnauthorized: false };
 }
 
 const pool = new Pool(poolConfig);
