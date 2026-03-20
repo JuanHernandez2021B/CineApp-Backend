@@ -16,11 +16,19 @@ const poolConfig = {
   max: 1
 };
 
-if (hasDatabaseUrl) {
+if (usingInternalRailway) {
+  // Para conexión interna Railway, usar parámetros PG* explícitos y sin SSL.
+  // Esto evita conflictos por query params en DATABASE_URL (ej. sslmode=require).
+  poolConfig.host = process.env.PGHOST;
+  poolConfig.user = process.env.PGUSER;
+  poolConfig.password = process.env.PGPASSWORD;
+  poolConfig.database = process.env.PGDATABASE;
+  poolConfig.port = process.env.PGPORT ? parseInt(process.env.PGPORT) : undefined;
+  poolConfig.ssl = false;
+} else if (hasDatabaseUrl) {
   poolConfig.connectionString = process.env.DATABASE_URL;
 
-  // Inferir requerimiento de SSL desde sslmode (Railway normalmente incluye ?sslmode=require).
-  // Si sslmode=disable, no forzamos TLS.
+  // Inferir requerimiento de SSL desde sslmode.
   try {
     const u = new URL(process.env.DATABASE_URL);
     const sslmode = u.searchParams.get('sslmode');
@@ -28,18 +36,13 @@ if (hasDatabaseUrl) {
     const port = u.port || '(default)';
     console.log('DATABASE_URL host/port:', host, port, 'sslmode:', sslmode || '(none)');
 
-    if (usingInternalRailway) {
-      // En red privada de Railway normalmente NO se usa SSL.
-      poolConfig.ssl = false;
-    } else if (sslmode && sslmode.toLowerCase() === 'disable') {
+    if (sslmode && sslmode.toLowerCase() === 'disable') {
       poolConfig.ssl = false;
     } else {
-      // En Railway (proxy) los certificados pueden ser self-signed; desactivamos validación.
       poolConfig.ssl = { rejectUnauthorized: false };
     }
   } catch {
-    // Fallback: interno sin SSL, externo con SSL permisivo.
-    poolConfig.ssl = usingInternalRailway ? false : { rejectUnauthorized: false };
+    poolConfig.ssl = { rejectUnauthorized: false };
   }
 } else {
   poolConfig.host = process.env.PGHOST;
