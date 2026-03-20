@@ -10,24 +10,15 @@ const baseConfig = {
   max: 3
 };
 
-const getPoolConfig = () => {
+const getPoolConfigs = () => {
   if (databaseUrl) {
-    let isInternal = false;
-    let sslmode = null;
-    try {
-      const url = new URL(databaseUrl);
-      isInternal = url.hostname.includes('railway.internal');
-      sslmode = (url.searchParams.get('sslmode') || '').toLowerCase();
-    } catch {}
-
-    if (sslmode === 'disable' || isInternal) {
-      return { ...baseConfig, connectionString: databaseUrl, ssl: false };
-    }
-    return {
+    const noSsl = { ...baseConfig, connectionString: databaseUrl, ssl: false };
+    const ssl = {
       ...baseConfig,
       connectionString: databaseUrl,
       ssl: { rejectUnauthorized: false }
     };
+    return [noSsl, ssl];
   }
 
   if (!pgHost || !process.env.PGUSER || !process.env.PGPASSWORD || !process.env.PGDATABASE || !process.env.PGPORT) {
@@ -35,7 +26,7 @@ const getPoolConfig = () => {
   }
 
   const isInternal = pgHost.includes('railway.internal');
-  return {
+  return [{
     ...baseConfig,
     host: pgHost,
     user: process.env.PGUSER,
@@ -43,7 +34,7 @@ const getPoolConfig = () => {
     database: process.env.PGDATABASE,
     port: parseInt(process.env.PGPORT, 10),
     ssl: isInternal ? false : { rejectUnauthorized: false }
-  };
+  }];
 };
 
 let activePool = null;
@@ -56,21 +47,23 @@ const pool = {
 const wait = (ms) => new Promise((resolve) => setTimeout(resolve, ms));
 
 const connectWithRetry = async (attempts = 10, delayMs = 4000) => {
-  const config = getPoolConfig();
+  const configs = getPoolConfigs();
   let lastError;
 
   for (let i = 1; i <= attempts; i++) {
-    try {
-      const testPool = new Pool(config);
-      await testPool.query('SELECT 1');
-      console.log('Conexión DB activa');
-      return testPool;
-    } catch (error) {
-      lastError = error;
-      console.error(`DB intento ${i}/${attempts} falló: ${error?.message || error}`);
-      if (i < attempts) await wait(delayMs);
+    for (const config of configs) {
+      try {
+        const testPool = new Pool(config);
+        await testPool.query('SELECT 1');
+        console.log('Conexión DB activa');
+        return testPool;
+      } catch (error) {
+        lastError = error;
+      }
     }
-  }
+    console.error(`DB intento ${i}/${attempts} falló: ${lastError?.message || lastError}`);
+    if (i < attempts) await wait(delayMs);
+    }
 
   throw lastError;
 };
